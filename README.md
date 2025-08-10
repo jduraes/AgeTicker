@@ -17,9 +17,15 @@ Install
 - On macOS, Python’s built-in `curses` is available in the system Python; for Homebrew Python, ensure `_curses` is installed (usually default).
 
 Run
-- From the project directory:
+- From source (requires Python 3.8+):
 
   python3 main.py
+
+- Prebuilt binaries (macOS, Windows, Linux):
+  - See Releases for downloads. Make the file executable if needed (macOS/Linux):
+
+    chmod +x ./ageticker-<platform>
+    ./ageticker-<platform>
 
 Usage notes
 - Input formats:
@@ -44,6 +50,17 @@ Implementation notes
 Known limitations
 - Terminal window needs to be tall enough to display all sections. If too small, content may scroll or clip.
 - The app expects Gregorian calendar dates; localized calendars aren’t supported.
+
+Screenshot
+- Placeholder image below; replace with a real screenshot or GIF:
+
+  ![AgeTicker screenshot](docs/screenshot.png)
+
+Homebrew (macOS)
+- Tap and install:
+
+  brew tap jduraes/ageticker https://github.com/jduraes/homebrew-ageticker
+  brew install ageticker
 
 License
 - Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0). See LICENSE.
