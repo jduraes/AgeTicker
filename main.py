@@ -133,7 +133,8 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
                 # incomplete and no default accepted -> continue editing
                 continue
             return text
-        if k in (curses.KEY_BACKSPACE, 127, 8):
+        # macOS backspace often arrives as '\x7f' or '\x08'
+        if (k == curses.KEY_BACKSPACE) or (isinstance(k, str) and k in ('\x7f', '\x08')) or (not isinstance(k, str) and k in (127, 8)):
             # Backspace: clear previous digit and move left
             if cur > 0:
                 cur -= 1
