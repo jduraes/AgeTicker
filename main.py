@@ -464,16 +464,14 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
         band_height = 1 + 5 + 1  # label + big 5 rows + spacer
         max_band_bottom = base_row
 
-        # Clear previous band area minimally by overwriting spaces where needed is complex; we just redraw over
+        # Clear previous band area
         last_render_lines = []
         last_labels_positions = []
 
         for label, value in entries:
             big_rows = render_big(value)
-            # Width of this block
-            block_w = max(len(r) for r in big_rows)
-            label_w = len(label)
-            block_w = max(block_w, label_w)
+            # Block width based on big digit rows
+            block_w = len(big_rows[0]) if big_rows else 0
 
             # Wrap if needed
             if cur_x + block_w > max_x - 2:
@@ -481,19 +479,15 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
                 base_row = max_band_bottom + 1
                 cur_x = 2
 
-            # Draw label
-            safe_addstr(base_row, cur_x, label)
-            last_labels_positions.append((base_row, cur_x, label))
+            # Center label over the block
+            label_x = cur_x + max(0, (block_w - len(label)) // 2)
+            safe_addstr(base_row, label_x, label)
+            last_labels_positions.append((base_row, label_x, label))
+
             # Draw big rows
             for i, row in enumerate(big_rows):
                 safe_addstr(base_row + 1 + i, cur_x, row)
-            # Capture last render lines by reconstructing block rows
-            for i, row in enumerate(big_rows):
-                # ensure list is large enough
-                line_index = base_row + 1 + i
-                while len(last_render_lines) <= line_index:
-                    last_render_lines.append("")
-                # naive: place row at x; for final print we will just print combined sections sequentially instead
+
             # Update x and band bottom
             cur_x += block_w + gap
             max_band_bottom = max(max_band_bottom, base_row + 1 + len(big_rows))
