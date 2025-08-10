@@ -333,31 +333,77 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
     stdscr.nodelay(True)
     stdscr.timeout(20)  # 20ms
 
+    def safe_addstr(y: int, x: int, s: str):
+        try:
+            max_y, max_x = stdscr.getmaxyx()
+            if x < 0 or y < 0 or y >= max_y:
+                return
+            if x >= max_x:
+                return
+            if len(s) > max_x - x:
+                s = s[: max_x - x]
+            stdscr.addstr(y, x, s)
+        except Exception:
+            pass
+
     while True:
         now = dt.datetime.now()
         y, mo, d, h, mi, s, ms = diff_ymdhmsms(dob_dt, now)
 
+        # Zero-padded display widths
+        years_txt = f"{y:03d}"
+        months_txt = f"{mo:02d}"
+        days_txt = f"{d:02d}"
+        hours_txt = f"{h:02d}"
+        minutes_txt = f"{mi:02d}"
+        seconds_txt = f"{s:02d}"
+        ms_txt = f"{ms:03d}"
+
         stdscr.erase()
         title = "Age ticker (press ESC to quit)"
-        stdscr.addstr(0, 2, title)
+        safe_addstr(0, 2, title)
 
-        # Compose big displays per unit
-        line = 2
+        # Horizontal layout with wrapping
+        base_row = 2  # label row for current band
+        cur_x = 2
+        gap = 4
+        max_y, max_x = stdscr.getmaxyx()
+
         entries = [
-            ("YEARS", f"{y}"),
-            ("MONTHS", f"{mo}"),
-            ("DAYS", f"{d}"),
-            ("HOURS", f"{h:02d}"),
-            ("MINUTES", f"{mi:02d}"),
-            ("SECONDS", f"{s:02d}"),
-            ("MILLISECONDS", f"{ms:03d}"),
+            ("YEARS", years_txt),
+            ("MONTHS", months_txt),
+            ("DAYS", days_txt),
+            ("HOURS", hours_txt),
+            ("MINUTES", minutes_txt),
+            ("SECONDS", seconds_txt),
+            ("MSEC", ms_txt),
         ]
+
+        band_height = 1 + 5 + 1  # label + big 5 rows + spacer
+        max_band_bottom = base_row
+
         for label, value in entries:
-            stdscr.addstr(line, 2, label)
-            big = render_big(value)
-            for i, row in enumerate(big):
-                stdscr.addstr(line + 1 + i, 2, row)
-            line += 1 + len(big) + 1
+            big_rows = render_big(value)
+            # Width of this block
+            block_w = max(len(r) for r in big_rows)
+            label_w = len(label)
+            block_w = max(block_w, label_w)
+
+            # Wrap if needed
+            if cur_x + block_w > max_x - 2:
+                # move to next band
+                base_row = max_band_bottom + 1
+                cur_x = 2
+
+            # Draw label
+            safe_addstr(base_row, cur_x, label)
+            # Draw big rows
+            for i, row in enumerate(big_rows):
+                safe_addstr(base_row + 1 + i, cur_x, row)
+
+            # Update x and band bottom
+            cur_x += block_w + gap
+            max_band_bottom = max(max_band_bottom, base_row + 1 + len(big_rows))
 
         stdscr.refresh()
 

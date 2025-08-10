@@ -9,7 +9,7 @@ Features
 - If time is skipped and there is no saved value, assumes 12:00:00.000 (noon sharp).
 - Saves last-entered DOB into an 8.3-friendly file name `lastdob.txt` and pre-populates prompts next run.
   - If a saved value exists, pressing Enter at the prompts uses the saved value.
-- Curses-based ticker shows big ASCII numbers for each unit and updates in near real-time.
+- Curses-based ticker shows big ASCII numbers for each unit in a horizontal layout (with wrapping when needed) and updates in near real-time.
 - Quit with ESC.
 
 Install
