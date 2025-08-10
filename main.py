@@ -11,8 +11,8 @@ from typing import Optional, Tuple, List
 # 8.3-friendly filename as per user's rule
 LAST_FILE = "lastdob.txt"
 
-DATE_PROMPT = "Enter date of birth [dd/mm/yyyy]"
-TIME_PROMPT = "Enter time of birth [hh:mm:ss.ms] (press Enter to skip)"
+DATE_PROMPT = "Date of birth (dd/mm/yyyy)"
+TIME_PROMPT = "Time of birth (hh:mm:ss.ms)"
 
 # Strict formats: dd/mm/yyyy and hh:mm:ss.ms
 DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
@@ -98,76 +98,154 @@ def save_last_dob(path: str, dob: DOB) -> None:
         pass
 
 
-def prompt_input(pre: Optional[DOB]) -> DOB:
-    # Date section (loop until valid date only)
-    default_date = f"{pre.day:02d}/{pre.month:02d}/{pre.year:04d}" if pre else None
+def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Optional[str]) -> Optional[str]:
+    # mask e.g. "dd/mm/yyyy" or "hh:mm:ss.ms"
+    digits_positions = [i for i, ch in enumerate(mask) if ch in ('d', 'm', 'y', 'h', 's') or ch == '0']
+    # Build a char array initialized from default if provided
+    buf = list(mask)
+    if default_text:
+        # Fill digits from default_text where digits
+        dt_idx = 0
+        for i, ch in enumerate(mask):
+            if ch in ('d', 'm', 'y', 'h', 's') or ch == '0':
+                while dt_idx < len(default_text) and not default_text[dt_idx].isdigit():
+                    dt_idx += 1
+                if dt_idx < len(default_text) and default_text[dt_idx].isdigit():
+                    buf[i] = default_text[dt_idx]
+                    dt_idx += 1
+                else:
+                    buf[i] = '_'
+            else:
+                buf[i] = ch
+    else:
+        buf = [ch if not (ch in ('d', 'm', 'y', 'h', 's') or ch == '0') else '_' for ch in mask]
+
+    # caret at first digit position
+    pos_list = [i for i, ch in enumerate(mask) if ch not in ['/', ':', '.', ' ']]
+    # But we only accept digits where underscores are
+    digit_positions = [i for i, ch in enumerate(buf) if ch == '_' or buf[i].isdigit() and mask[i] not in ['/', ':', '.', ' ']]
+    # Simplify: accept digits at positions where mask had placeholders
+    digit_positions = [i for i, ch in enumerate(mask) if ch in ('d', 'm', 'y', 'h', 's') or ch == '0']
+
+    cur = 0
+    while cur < len(digit_positions) and buf[digit_positions[cur]].isdigit():
+        cur += 1
+
+    curses.curs_set(1)
+    stdscr.nodelay(False)
+
     while True:
-        prompt = DATE_PROMPT + " (two-digit day/month, four-digit year, e.g., 07/09/1985)"
-        if default_date:
-            prompt += f" [{default_date}]"
-        prompt += ": "
-        s = input(prompt).strip()
-        if not s and default_date:
-            s = default_date
-        m = DATE_RE.match(s)
+        stdscr.move(y, x)
+        stdscr.clrtoeol()
+        stdscr.addstr(y, x, f"{label}: ")
+        stdscr.addstr(y, x + len(label) + 2, ''.join(buf))
+        # place cursor
+        if digit_positions:
+            stdscr.move(y, x + len(label) + 2 + digit_positions[cur if cur < len(digit_positions) else len(digit_positions)-1])
+        stdscr.refresh()
+
+        k = stdscr.get_wch()
+        if isinstance(k, str) and k == '\n':
+            # If any underscores remain, treat as empty
+            text = ''.join(buf)
+            if '_' in text:
+                return None  # signal skipped/empty
+            return text
+        if k in (curses.KEY_BACKSPACE, 127, 8):
+            if cur > 0:
+                cur -= 1
+                idx = digit_positions[cur]
+                buf[idx] = '_'
+        elif isinstance(k, str) and k.isdigit():
+            if cur < len(digit_positions):
+                idx = digit_positions[cur]
+                buf[idx] = k
+                cur += 1
+        elif k == curses.KEY_LEFT:
+            if cur > 0:
+                cur -= 1
+        elif k == curses.KEY_RIGHT:
+            if cur < len(digit_positions):
+                cur += 1
+        elif isinstance(k, str) and k.lower() == '\x1b':  # ESC cancels
+            return ''.join(buf).replace('_', '')  # allow partial? we'll handle outside
+        # ignore other keys
+
+
+def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
+    # Build defaults
+    default_date = f"{pre.day:02d}/{pre.month:02d}/{pre.year:04d}" if pre else None
+    default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}.{pre.millisecond:03d}" if pre else None
+
+    # Draw simple prompts using masked editor
+    stdscr.erase()
+    stdscr.addstr(0, 2, "Enter details. Press Enter to accept. ESC to abort.")
+
+    # Date input
+    while True:
+        date_text = _masked_edit(stdscr, 2, 2, DATE_PROMPT, "dd/mm/yyyy", default_date)
+        if date_text is None:
+            # user pressed enter with incomplete -> if default exists use it, else re-ask
+            if default_date:
+                date_text = default_date
+            else:
+                continue
+        m = DATE_RE.match(date_text)
         if not m:
-            print("Invalid date format. Use dd/mm/yyyy with two-digit day/month and 4-digit year (e.g., 07/09/1985).")
+            # show brief error and retry
+            stdscr.addstr(3, 2, "Invalid date. Use dd/mm/yyyy.")
+            stdscr.refresh()
+            curses.napms(800)
+            stdscr.move(3, 2)
+            stdscr.clrtoeol()
             continue
         day, month, year = map(int, m.groups())
-        # Validate calendar date
         try:
             _ = dt.datetime(year, month, day)
+            break
         except ValueError:
-            print("Invalid calendar date. Please enter a real date (e.g., 29/02 only on leap years).")
+            stdscr.addstr(3, 2, "Invalid calendar date.")
+            stdscr.refresh()
+            curses.napms(800)
+            stdscr.move(3, 2)
+            stdscr.clrtoeol()
             continue
-        break
 
-    # Time section (loop only on time errors; do not re-ask date)
-    default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}.{pre.millisecond:03d}" if pre else None
+    # Time input
     while True:
-        tprompt = TIME_PROMPT + " (two-digit hh/mm/ss and three-digit ms; e.g., 04:05:06.007)"
-        if default_time:
-            tprompt += f" [{default_time}]"
-        tprompt += ": "
-        ts = input(tprompt).strip()
-        if not ts:
+        time_text = _masked_edit(stdscr, 5, 2, TIME_PROMPT, "hh:mm:ss.ms", default_time)
+        if time_text is None:
             if default_time:
-                ts = default_time
+                time_text = default_time
             else:
-                # Assume mid-day sharp
-                hour = 12
-                minute = 0
-                second = 0
-                ms = 0
-                try:
-                    _ = dt.datetime(year, month, day, hour, minute, second, ms * 1000)
-                    return DOB(day, month, year, hour, minute, second, ms)
-                except ValueError as e:
-                    print(f"Invalid date/time: {e}")
-                    continue
-        tm = TIME_RE.match(ts)
+                # Noon default if skipped
+                hour, minute, second, ms = 12, 0, 0, 0
+                return DOB(day, month, year, hour, minute, second, ms)
+        tm = TIME_RE.match(time_text)
         if not tm:
-            print("Invalid time format. Use hh:mm:ss.ms with two-digit hh/mm/ss and three-digit ms (e.g., 04:05:06.007).")
+            stdscr.addstr(6, 2, "Invalid time. Use hh:mm:ss.ms.")
+            stdscr.refresh()
+            curses.napms(800)
+            stdscr.move(6, 2)
+            stdscr.clrtoeol()
             continue
         hour, minute, second, ms = map(int, tm.groups())
-        # Range checks
-        if not (0 <= hour <= 23):
-            print("Hour must be between 00 and 23.")
-            continue
-        if not (0 <= minute <= 59):
-            print("Minute must be between 00 and 59.")
-            continue
-        if not (0 <= second <= 59):
-            print("Second must be between 00 and 59.")
-            continue
-        if not (0 <= ms <= 999):
-            print("Milliseconds must be between 000 and 999.")
+        if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59 and 0 <= ms <= 999):
+            stdscr.addstr(6, 2, "Time out of range.")
+            stdscr.refresh()
+            curses.napms(800)
+            stdscr.move(6, 2)
+            stdscr.clrtoeol()
             continue
         try:
             _ = dt.datetime(year, month, day, hour, minute, second, ms * 1000)
             return DOB(day, month, year, hour, minute, second, ms)
-        except ValueError as e:
-            print(f"Invalid date/time: {e}")
+        except ValueError:
+            stdscr.addstr(6, 2, "Invalid date/time combination.")
+            stdscr.refresh()
+            curses.napms(800)
+            stdscr.move(6, 2)
+            stdscr.clrtoeol()
             continue
 
 
@@ -346,6 +424,9 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
         except Exception:
             pass
 
+    last_render_lines: List[str] = []
+    last_labels_positions: List[Tuple[int, int, str]] = []
+
     while True:
         now = dt.datetime.now()
         y, mo, d, h, mi, s, ms = diff_ymdhmsms(dob_dt, now)
@@ -359,9 +440,8 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
         seconds_txt = f"{s:02d}"
         ms_txt = f"{ms:03d}"
 
-        stdscr.erase()
-        title = "Age ticker (press ESC to quit)"
-        safe_addstr(0, 2, title)
+        # draw header once at top
+        safe_addstr(0, 2, "Age ticker (ESC to quit)")
 
         # Horizontal layout with wrapping
         base_row = 2  # label row for current band
@@ -382,6 +462,10 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
         band_height = 1 + 5 + 1  # label + big 5 rows + spacer
         max_band_bottom = base_row
 
+        # Clear previous band area minimally by overwriting spaces where needed is complex; we just redraw over
+        last_render_lines = []
+        last_labels_positions = []
+
         for label, value in entries:
             big_rows = render_big(value)
             # Width of this block
@@ -397,10 +481,17 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
 
             # Draw label
             safe_addstr(base_row, cur_x, label)
+            last_labels_positions.append((base_row, cur_x, label))
             # Draw big rows
             for i, row in enumerate(big_rows):
                 safe_addstr(base_row + 1 + i, cur_x, row)
-
+            # Capture last render lines by reconstructing block rows
+            for i, row in enumerate(big_rows):
+                # ensure list is large enough
+                line_index = base_row + 1 + i
+                while len(last_render_lines) <= line_index:
+                    last_render_lines.append("")
+                # naive: place row at x; for final print we will just print combined sections sequentially instead
             # Update x and band bottom
             cur_x += block_w + gap
             max_band_bottom = max(max_band_bottom, base_row + 1 + len(big_rows))
@@ -416,15 +507,53 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
             break
 
 
-def main():
+def _run_app(stdscr):
     pre = load_last_dob(LAST_FILE)
-    dob = prompt_input(pre)
-    # Persist selection immediately
+    dob = prompt_input(pre, stdscr)
     save_last_dob(LAST_FILE, dob)
-
     dob_dt = dob.to_datetime()
+    draw_screen(stdscr, dob_dt)
 
-    curses.wrapper(draw_screen, dob_dt)
+
+def main():
+    # Use curses for masked input and ticker, but on exit we will print a final snapshot
+    last_lines_holder: List[str] = []
+    try:
+        curses.wrapper(_run_app)
+    finally:
+        # After curses ends, we cannot easily retrieve drawn content; instead, recompute one last snapshot and print
+        pre = load_last_dob(LAST_FILE)
+        if pre:
+            dob_dt = pre.to_datetime()
+            now = dt.datetime.now()
+            y, mo, d, h, mi, s, ms = diff_ymdhmsms(dob_dt, now)
+            years_txt = f"{y:03d}"
+            months_txt = f"{mo:02d}"
+            days_txt = f"{d:02d}"
+            hours_txt = f"{h:02d}"
+            minutes_txt = f"{mi:02d}"
+            seconds_txt = f"{s:02d}"
+            ms_txt = f"{ms:03d}"
+            entries = [
+                ("YEARS", years_txt),
+                ("MONTHS", months_txt),
+                ("DAYS", days_txt),
+                ("HOURS", hours_txt),
+                ("MINUTES", minutes_txt),
+                ("SECONDS", seconds_txt),
+                ("MSEC", ms_txt),
+            ]
+            # Compose a simple horizontal snapshot for stdout
+            labels = '   '.join(label for label, _ in entries)
+            big_rows_per = [render_big(val) for _, val in entries]
+            rows_out = []
+            for i in range(5):
+                row = '   '.join(br[i] for br in big_rows_per)
+                rows_out.append(row)
+            print("Age ticker (final snapshot)")
+            print(labels)
+            for r in rows_out:
+                print(r)
 
 
 if __name__ == "__main__":
