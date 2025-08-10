@@ -13,7 +13,7 @@ from typing import Optional, Tuple, List
 LAST_FILE = "lastdob.txt"
 
 # App version (keep in sync with tags/releases)
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 DATE_PROMPT = "Date of birth (dd/mm/yyyy)"
 TIME_PROMPT = "Time of birth (hh:mm:ss)"
