@@ -5,7 +5,7 @@ This is a simple Python curses application that displays, in ASCII big digits, t
 Features
 - Prompts for date and time of birth in two sections.
   - Date: dd/mm/yyyy (required)
-  - Time: hh:mm:ss:ms (optional; press Enter to skip)
+  - Time: hh:mm:ss.ms (optional; press Enter to skip)
 - If time is skipped and there is no saved value, assumes 12:00:00.000 (noon sharp).
 - Saves last-entered DOB into an 8.3-friendly file name `lastdob.txt` and pre-populates prompts next run.
   - If a saved value exists, pressing Enter at the prompts uses the saved value.
@@ -24,7 +24,7 @@ Run
 Usage notes
 - Input formats:
   - Date: dd/mm/yyyy (e.g., 07/09/1985)
-  - Time: hh:mm:ss:ms (e.g., 14:23:45:123)
+  - Time: hh:mm:ss.ms (e.g., 14:23:45.123)
 - On first run (no saved value):
   - If you press Enter at the time prompt, it uses 12:00:00.000.
 - On subsequent runs (with saved value present):
@@ -35,7 +35,7 @@ Persistence file
 - The app reads and writes `lastdob.txt` in the working directory.
 - Format:
   - Line 1: dd/mm/yyyy
-  - Line 2: hh:mm:ss:ms
+  - Line 2: hh:mm:ss.ms
 
 Implementation notes
 - The difference in years and months is computed by searching for the maximum full years and months that fit between DOB and now, then the remainder is split into days, hours, minutes, seconds, and milliseconds.

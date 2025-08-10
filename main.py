@@ -12,10 +12,10 @@ from typing import Optional, Tuple, List
 LAST_FILE = "lastdob.txt"
 
 DATE_PROMPT = "Enter date of birth [dd/mm/yyyy]"
-TIME_PROMPT = "Enter time of birth [hh:mm:ss:ms] (press Enter to skip)"
+TIME_PROMPT = "Enter time of birth [hh:mm:ss.ms] (press Enter to skip)"
 
 DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
-TIME_RE = re.compile(r"^(\d{1,2}):(\d{1,2}):(\d{1,2}):(\d{1,3})$")
+TIME_RE = re.compile(r"^(\d{1,2}):(\d{1,2}):(\d{1,2})\.(\d{1,3})$")
 
 
 @dataclass
@@ -40,7 +40,7 @@ class DOB:
     def serialize(self) -> str:
         # Two lines: date and time. Friendly for manual editing.
         date_s = f"{self.day:02d}/{self.month:02d}/{self.year:04d}"
-        time_s = f"{self.hour:02d}:{self.minute:02d}:{self.second:02d}:{self.millisecond:03d}"
+        time_s = f"{self.hour:02d}:{self.minute:02d}:{self.second:02d}.{self.millisecond:03d}"
         return date_s + "\n" + time_s + "\n"
 
     @staticmethod
@@ -93,7 +93,7 @@ def save_last_dob(path: str, dob: DOB) -> None:
 
 
 def prompt_input(pre: Optional[DOB]) -> DOB:
-    # Date section
+    # Date section (loop until valid date only)
     default_date = f"{pre.day:02d}/{pre.month:02d}/{pre.year:04d}" if pre else None
     while True:
         prompt = DATE_PROMPT
@@ -108,8 +108,11 @@ def prompt_input(pre: Optional[DOB]) -> DOB:
             print("Invalid date format. Please use dd/mm/yyyy.")
             continue
         day, month, year = map(int, m.groups())
-        # Time section
-        default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}:{pre.millisecond:03d}" if pre else None
+        break
+
+    # Time section (loop only on time errors; do not re-ask date)
+    default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}.{pre.millisecond:03d}" if pre else None
+    while True:
         tprompt = TIME_PROMPT
         if default_time:
             tprompt += f" [{default_time}]"
@@ -132,7 +135,7 @@ def prompt_input(pre: Optional[DOB]) -> DOB:
                     continue
         tm = TIME_RE.match(ts)
         if not tm:
-            print("Invalid time format. Please use hh:mm:ss:ms.")
+            print("Invalid time format. Please use hh:mm:ss.ms.")
             continue
         hour, minute, second, ms = map(int, tm.groups())
         try:
