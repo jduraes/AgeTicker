@@ -134,8 +134,15 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
                 continue
             return text
         if k in (curses.KEY_BACKSPACE, 127, 8):
+            # Backspace: clear previous digit and move left
             if cur > 0:
                 cur -= 1
+                idx = digit_positions[cur]
+                buf[idx] = '_'
+                edited = True
+        elif k == curses.KEY_DC or (isinstance(k, str) and k == '\x1b[3~'):
+            # Delete (forward): clear current digit but do not move cursor
+            if cur < len(digit_positions):
                 idx = digit_positions[cur]
                 buf[idx] = '_'
                 edited = True
