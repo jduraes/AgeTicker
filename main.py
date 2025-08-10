@@ -14,8 +14,9 @@ LAST_FILE = "lastdob.txt"
 DATE_PROMPT = "Enter date of birth [dd/mm/yyyy]"
 TIME_PROMPT = "Enter time of birth [hh:mm:ss.ms] (press Enter to skip)"
 
-DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
-TIME_RE = re.compile(r"^(\d{1,2}):(\d{1,2}):(\d{1,2})\.(\d{1,3})$")
+# Strict formats: dd/mm/yyyy and hh:mm:ss.ms
+DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
+TIME_RE = re.compile(r"^(\d{2}):(\d{2}):(\d{2})\.(\d{3})$")
 
 
 @dataclass
@@ -57,8 +58,13 @@ class DOB:
         if time_s:
             tm = TIME_RE.match(time_s)
             if not tm:
-                return None
-            hh, mm, ss, ms = map(int, tm.groups())
+                # Backward-compat: accept old format with colon between sec and ms
+                tm_old = re.match(r"^(\d{1,2}):(\d{1,2}):(\d{1,2}):(\d{1,3})$", time_s)
+                if not tm_old:
+                    return None
+                hh, mm, ss, ms = map(int, tm_old.groups())
+            else:
+                hh, mm, ss, ms = map(int, tm.groups())
         else:
             # No time provided in file; default to noon
             hh = 12
@@ -96,7 +102,7 @@ def prompt_input(pre: Optional[DOB]) -> DOB:
     # Date section (loop until valid date only)
     default_date = f"{pre.day:02d}/{pre.month:02d}/{pre.year:04d}" if pre else None
     while True:
-        prompt = DATE_PROMPT
+        prompt = DATE_PROMPT + " (two-digit day/month, four-digit year, e.g., 07/09/1985)"
         if default_date:
             prompt += f" [{default_date}]"
         prompt += ": "
@@ -105,15 +111,21 @@ def prompt_input(pre: Optional[DOB]) -> DOB:
             s = default_date
         m = DATE_RE.match(s)
         if not m:
-            print("Invalid date format. Please use dd/mm/yyyy.")
+            print("Invalid date format. Use dd/mm/yyyy with two-digit day/month and 4-digit year (e.g., 07/09/1985).")
             continue
         day, month, year = map(int, m.groups())
+        # Validate calendar date
+        try:
+            _ = dt.datetime(year, month, day)
+        except ValueError:
+            print("Invalid calendar date. Please enter a real date (e.g., 29/02 only on leap years).")
+            continue
         break
 
     # Time section (loop only on time errors; do not re-ask date)
     default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}.{pre.millisecond:03d}" if pre else None
     while True:
-        tprompt = TIME_PROMPT
+        tprompt = TIME_PROMPT + " (two-digit hh/mm/ss and three-digit ms; e.g., 04:05:06.007)"
         if default_time:
             tprompt += f" [{default_time}]"
         tprompt += ": "
@@ -135,9 +147,22 @@ def prompt_input(pre: Optional[DOB]) -> DOB:
                     continue
         tm = TIME_RE.match(ts)
         if not tm:
-            print("Invalid time format. Please use hh:mm:ss.ms.")
+            print("Invalid time format. Use hh:mm:ss.ms with two-digit hh/mm/ss and three-digit ms (e.g., 04:05:06.007).")
             continue
         hour, minute, second, ms = map(int, tm.groups())
+        # Range checks
+        if not (0 <= hour <= 23):
+            print("Hour must be between 00 and 23.")
+            continue
+        if not (0 <= minute <= 59):
+            print("Minute must be between 00 and 59.")
+            continue
+        if not (0 <= second <= 59):
+            print("Second must be between 00 and 59.")
+            continue
+        if not (0 <= ms <= 999):
+            print("Milliseconds must be between 000 and 999.")
+            continue
         try:
             _ = dt.datetime(year, month, day, hour, minute, second, ms * 1000)
             return DOB(day, month, year, hour, minute, second, ms)
@@ -148,30 +173,6 @@ def prompt_input(pre: Optional[DOB]) -> DOB:
 
 # Big ASCII digits (5 rows high) for 0-9 and some separators
 BIG_FONT = {
-    '0': [
-        " ███ ",
-        "█   █",
-        "█   █",
-        "█   █",
-        " ███ ",
-    ],
-    '1': [
-        "  █  ",
-        " ██  ",
-        "  █  ",
-        "  █  ",
-        " ███ ",
-    ],
-    '2': [
-        " ███ ",
-        "█   █",
-        "   █ ",
-        "  █  ",
-        "█████",
-    ],
-    '3': [
-        "████ ",
-        "    █",
         " ███ ",
         "    █",
         "████ ",
