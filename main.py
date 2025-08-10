@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import curses
 import datetime as dt
 import json
@@ -10,6 +11,9 @@ from typing import Optional, Tuple, List
 
 # 8.3-friendly filename as per user's rule
 LAST_FILE = "lastdob.txt"
+
+# App version (keep in sync with tags/releases)
+VERSION = "0.1.2"
 
 DATE_PROMPT = "Date of birth (dd/mm/yyyy)"
 TIME_PROMPT = "Time of birth (hh:mm:ss)"
@@ -171,12 +175,14 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
 
     # Draw simple prompts using masked editor
     stdscr.erase()
-    stdscr.addstr(0, 2, "Enter details. Press Enter to accept. ESC to abort.")
+    stdscr.addstr(0, 2, f"AgeTicker v{VERSION}")
+    stdscr.addstr(1, 2, "")
+    stdscr.addstr(2, 2, "Enter details. Press Enter to accept. ESC to abort.")
     stdscr.refresh()
 
     # Date input
     while True:
-        date_text = _masked_edit(stdscr, 2, 2, DATE_PROMPT, "dd/mm/yyyy", default_date)
+        date_text = _masked_edit(stdscr, 4, 2, DATE_PROMPT, "dd/mm/yyyy", default_date)
         if date_text is None:
             # user pressed enter with incomplete -> if default exists use it, else re-ask
             if default_date:
@@ -206,7 +212,7 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
 
     # Time input
     while True:
-        time_text = _masked_edit(stdscr, 5, 2, TIME_PROMPT, "hh:mm:ss", default_time)
+        time_text = _masked_edit(stdscr, 7, 2, TIME_PROMPT, "hh:mm:ss", default_time)
         if time_text is None:
             if default_time:
                 time_text = default_time
@@ -216,29 +222,29 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
                 return DOB(day, month, year, hour, minute, second, ms)
         tm = TIME_RE.match(time_text)
         if not tm:
-            stdscr.addstr(6, 2, "Invalid time. Use hh:mm:ss.")
+            stdscr.addstr(8, 2, "Invalid time. Use hh:mm:ss.")
             stdscr.refresh()
             curses.napms(800)
-            stdscr.move(6, 2)
+            stdscr.move(8, 2)
             stdscr.clrtoeol()
             continue
         hour, minute, second = map(int, tm.groups())
         ms = 0
         if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-            stdscr.addstr(6, 2, "Time out of range.")
+            stdscr.addstr(8, 2, "Time out of range.")
             stdscr.refresh()
             curses.napms(800)
-            stdscr.move(6, 2)
+            stdscr.move(8, 2)
             stdscr.clrtoeol()
             continue
         try:
             _ = dt.datetime(year, month, day, hour, minute, second, ms * 1000)
             return DOB(day, month, year, hour, minute, second, ms)
         except ValueError:
-            stdscr.addstr(6, 2, "Invalid date/time combination.")
+            stdscr.addstr(8, 2, "Invalid date/time combination.")
             stdscr.refresh()
             curses.napms(800)
-            stdscr.move(6, 2)
+            stdscr.move(8, 2)
             stdscr.clrtoeol()
             continue
 
@@ -503,6 +509,13 @@ def _run_app(stdscr):
 
 
 def main():
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--version", action="store_true", help="Print version and exit")
+    args, _ = parser.parse_known_args()
+    if args.version:
+        print(f"AgeTicker v{VERSION}")
+        return
+
     # Use curses for masked input and ticker, but on exit we will print a final snapshot
     last_lines_holder: List[str] = []
     try:
@@ -544,6 +557,8 @@ def main():
             for i in range(5):
                 row = '   '.join(br[i] for br in big_rows_per)
                 rows_out.append(row)
+            print(f"AgeTicker v{VERSION}")
+            print()
             print("Age ticker (final snapshot)")
             print(label_line)
             for r in rows_out:
