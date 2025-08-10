@@ -12,11 +12,11 @@ from typing import Optional, Tuple, List
 LAST_FILE = "lastdob.txt"
 
 DATE_PROMPT = "Date of birth (dd/mm/yyyy)"
-TIME_PROMPT = "Time of birth (hh:mm:ss.ms)"
+TIME_PROMPT = "Time of birth (hh:mm:ss)"
 
-# Strict formats: dd/mm/yyyy and hh:mm:ss.ms
+# Strict formats: dd/mm/yyyy and hh:mm:ss
 DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
-TIME_RE = re.compile(r"^(\d{2}):(\d{2}):(\d{2})\.(\d{3})$")
+TIME_RE = re.compile(r"^(\d{2}):(\d{2}):(\d{2})$")
 
 
 @dataclass
@@ -41,7 +41,7 @@ class DOB:
     def serialize(self) -> str:
         # Two lines: date and time. Friendly for manual editing.
         date_s = f"{self.day:02d}/{self.month:02d}/{self.year:04d}"
-        time_s = f"{self.hour:02d}:{self.minute:02d}:{self.second:02d}.{self.millisecond:03d}"
+        time_s = f"{self.hour:02d}:{self.minute:02d}:{self.second:02d}"
         return date_s + "\n" + time_s + "\n"
 
     @staticmethod
@@ -57,14 +57,17 @@ class DOB:
         d, m, y = map(int, date_m.groups())
         if time_s:
             tm = TIME_RE.match(time_s)
-            if not tm:
-                # Backward-compat: accept old format with colon between sec and ms
-                tm_old = re.match(r"^(\d{1,2}):(\d{1,2}):(\d{1,2}):(\d{1,3})$", time_s)
-                if not tm_old:
-                    return None
-                hh, mm, ss, ms = map(int, tm_old.groups())
+            if tm:
+                hh, mm, ss = map(int, tm.groups())
+                ms = 0
             else:
-                hh, mm, ss, ms = map(int, tm.groups())
+                # Backward-compat: accept old formats with ms
+                tm_dot = re.match(r"^(\d{1,2}):(\d{1,2}):(\d{1,2})\.(\d{1,3})$", time_s)
+                tm_col = re.match(r"^(\d{1,2}):(\d{1,2}):(\d{1,2}):(\d{1,3})$", time_s)
+                use = tm_dot or tm_col
+                if not use:
+                    return None
+                hh, mm, ss, ms = map(int, use.groups())
         else:
             # No time provided in file; default to noon
             hh = 12
@@ -175,7 +178,7 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
 def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
     # Build defaults
     default_date = f"{pre.day:02d}/{pre.month:02d}/{pre.year:04d}" if pre else None
-    default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}.{pre.millisecond:03d}" if pre else None
+    default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}" if pre else None
 
     # Draw simple prompts using masked editor
     stdscr.erase()
@@ -213,7 +216,7 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
 
     # Time input
     while True:
-        time_text = _masked_edit(stdscr, 5, 2, TIME_PROMPT, "hh:mm:ss.ms", default_time)
+        time_text = _masked_edit(stdscr, 5, 2, TIME_PROMPT, "hh:mm:ss", default_time)
         if time_text is None:
             if default_time:
                 time_text = default_time
@@ -223,14 +226,15 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
                 return DOB(day, month, year, hour, minute, second, ms)
         tm = TIME_RE.match(time_text)
         if not tm:
-            stdscr.addstr(6, 2, "Invalid time. Use hh:mm:ss.ms.")
+            stdscr.addstr(6, 2, "Invalid time. Use hh:mm:ss.")
             stdscr.refresh()
             curses.napms(800)
             stdscr.move(6, 2)
             stdscr.clrtoeol()
             continue
-        hour, minute, second, ms = map(int, tm.groups())
-        if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59 and 0 <= ms <= 999):
+        hour, minute, second = map(int, tm.groups())
+        ms = 0
+        if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
             stdscr.addstr(6, 2, "Time out of range.")
             stdscr.refresh()
             curses.napms(800)
@@ -438,7 +442,6 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
         hours_txt = f"{h:02d}"
         minutes_txt = f"{mi:02d}"
         seconds_txt = f"{s:02d}"
-        ms_txt = f"{ms:03d}"
 
         # draw header once at top
         safe_addstr(0, 2, "Age ticker (ESC to quit)")
@@ -456,7 +459,6 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
             ("HOURS", hours_txt),
             ("MINUTES", minutes_txt),
             ("SECONDS", seconds_txt),
-            ("MSEC", ms_txt),
         ]
 
         band_height = 1 + 5 + 1  # label + big 5 rows + spacer
@@ -533,7 +535,6 @@ def main():
             hours_txt = f"{h:02d}"
             minutes_txt = f"{mi:02d}"
             seconds_txt = f"{s:02d}"
-            ms_txt = f"{ms:03d}"
             entries = [
                 ("YEARS", years_txt),
                 ("MONTHS", months_txt),
@@ -541,7 +542,6 @@ def main():
                 ("HOURS", hours_txt),
                 ("MINUTES", minutes_txt),
                 ("SECONDS", seconds_txt),
-                ("MSEC", ms_txt),
             ]
             # Compose a simple horizontal snapshot for stdout
             labels = '   '.join(label for label, _ in entries)
