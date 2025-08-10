@@ -102,37 +102,11 @@ def save_last_dob(path: str, dob: DOB) -> None:
 
 
 def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Optional[str]) -> Optional[str]:
-    # mask e.g. "dd/mm/yyyy" or "hh:mm:ss.ms"
-    digits_positions = [i for i, ch in enumerate(mask) if ch in ('d', 'm', 'y', 'h', 's') or ch == '0']
-    # Build a char array initialized from default if provided
-    buf = list(mask)
-    if default_text:
-        # Fill digits from default_text where digits
-        dt_idx = 0
-        for i, ch in enumerate(mask):
-            if ch in ('d', 'm', 'y', 'h', 's') or ch == '0':
-                while dt_idx < len(default_text) and not default_text[dt_idx].isdigit():
-                    dt_idx += 1
-                if dt_idx < len(default_text) and default_text[dt_idx].isdigit():
-                    buf[i] = default_text[dt_idx]
-                    dt_idx += 1
-                else:
-                    buf[i] = '_'
-            else:
-                buf[i] = ch
-    else:
-        buf = [ch if not (ch in ('d', 'm', 'y', 'h', 's') or ch == '0') else '_' for ch in mask]
-
-    # caret at first digit position
-    pos_list = [i for i, ch in enumerate(mask) if ch not in ['/', ':', '.', ' ']]
-    # But we only accept digits where underscores are
-    digit_positions = [i for i, ch in enumerate(buf) if ch == '_' or buf[i].isdigit() and mask[i] not in ['/', ':', '.', ' ']]
-    # Simplify: accept digits at positions where mask had placeholders
-    digit_positions = [i for i, ch in enumerate(mask) if ch in ('d', 'm', 'y', 'h', 's') or ch == '0']
-
+    # Build buffer with separators and underscores
+    buf = [ch if ch in ['/', ':', '.', ' '] else '_' for ch in mask]
+    digit_positions = [i for i, ch in enumerate(mask) if ch not in ['/', ':', '.', ' ']]
     cur = 0
-    while cur < len(digit_positions) and buf[digit_positions[cur]].isdigit():
-        cur += 1
+    edited = False
 
     curses.curs_set(1)
     stdscr.nodelay(False)
@@ -140,30 +114,37 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
     while True:
         stdscr.move(y, x)
         stdscr.clrtoeol()
-        stdscr.addstr(y, x, f"{label}: ")
-        stdscr.addstr(y, x + len(label) + 2, ''.join(buf))
+        hint = f"{label}: "
+        if default_text:
+            hint += f"[{default_text}] "
+        stdscr.addstr(y, x, hint)
+        stdscr.addstr(y, x + len(hint), ''.join(buf))
         # place cursor
         if digit_positions:
-            stdscr.move(y, x + len(label) + 2 + digit_positions[cur if cur < len(digit_positions) else len(digit_positions)-1])
+            stdscr.move(y, x + len(hint) + digit_positions[cur if cur < len(digit_positions) else len(digit_positions)-1])
         stdscr.refresh()
 
         k = stdscr.get_wch()
         if isinstance(k, str) and k == '\n':
-            # If any underscores remain, treat as empty
             text = ''.join(buf)
             if '_' in text:
-                return None  # signal skipped/empty
+                if not edited and default_text:
+                    return default_text
+                # incomplete and no default accepted -> continue editing
+                continue
             return text
         if k in (curses.KEY_BACKSPACE, 127, 8):
             if cur > 0:
                 cur -= 1
                 idx = digit_positions[cur]
                 buf[idx] = '_'
+                edited = True
         elif isinstance(k, str) and k.isdigit():
             if cur < len(digit_positions):
                 idx = digit_positions[cur]
                 buf[idx] = k
                 cur += 1
+                edited = True
         elif k == curses.KEY_LEFT:
             if cur > 0:
                 cur -= 1
@@ -171,7 +152,7 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
             if cur < len(digit_positions):
                 cur += 1
         elif isinstance(k, str) and k.lower() == '\x1b':  # ESC cancels
-            return ''.join(buf).replace('_', '')  # allow partial? we'll handle outside
+            return default_text if default_text else None
         # ignore other keys
 
 
@@ -183,6 +164,7 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
     # Draw simple prompts using masked editor
     stdscr.erase()
     stdscr.addstr(0, 2, "Enter details. Press Enter to accept. ESC to abort.")
+    stdscr.refresh()
 
     # Date input
     while True:
@@ -432,6 +414,7 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
     last_labels_positions: List[Tuple[int, int, str]] = []
 
     while True:
+        stdscr.erase()
         now = dt.datetime.now()
         y, mo, d, h, mi, s, ms = diff_ymdhmsms(dob_dt, now)
 
@@ -538,14 +521,23 @@ def main():
                 ("SECONDS", seconds_txt),
             ]
             # Compose a simple horizontal snapshot for stdout
-            labels = '   '.join(label for label, _ in entries)
             big_rows_per = [render_big(val) for _, val in entries]
+            # Determine block widths
+            block_widths = [len(br[0]) for br in big_rows_per]
+            # Build centered label line
+            label_segments = []
+            for (label, _), w in zip(entries, block_widths):
+                pad_left = max(0, (w - len(label)) // 2)
+                segment = ' ' * pad_left + label.ljust(w - pad_left)
+                label_segments.append(segment)
+            label_line = '   '.join(label_segments)
+            # Build big rows concatenated
             rows_out = []
             for i in range(5):
                 row = '   '.join(br[i] for br in big_rows_per)
                 rows_out.append(row)
             print("Age ticker (final snapshot)")
-            print(labels)
+            print(label_line)
             for r in rows_out:
                 print(r)
 
