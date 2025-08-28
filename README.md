@@ -62,6 +62,33 @@ Homebrew (macOS)
   brew tap jduraes/ageticker https://github.com/jduraes/homebrew-ageticker
   brew install ageticker
 
+Building Executables
+
+- **Automated builds (Recommended)**: The GitHub Actions workflow automatically builds executables for Windows, macOS, and Linux on every push to main/master branch or when tags are created. Download from the Actions tab or Releases.
+
+- **Local builds**:
+  ```bash
+  # Install build dependencies
+  pip3 install -r requirements-build.txt
+  
+  # Build executable using the build script
+  ./build.sh
+  
+  # Or use PyInstaller directly
+  pyinstaller ageticker.spec
+  ```
+  
+  The executable will be created in the `dist/` folder.
+
+- **Windows builds from macOS**: Cross-compilation has limited support. For reliable Windows executables, use:
+  1. GitHub Actions (recommended)
+  2. Windows VM or machine
+  3. Docker with Windows base image
+
+Build Dependencies
+- PyInstaller 5.0+
+- Python 3.8+
+
 License
 - Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0). See LICENSE.
 

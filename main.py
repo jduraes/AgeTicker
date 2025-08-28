@@ -13,7 +13,7 @@ from typing import Optional, Tuple, List
 LAST_FILE = "lastdob.txt"
 
 # App version (keep in sync with tags/releases)
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 
 DATE_PROMPT = "Date of birth (dd/mm/yyyy)"
 TIME_PROMPT = "Time of birth (hh:mm:ss)"
@@ -406,6 +406,28 @@ def diff_ymdhmsms(start: dt.datetime, now: dt.datetime) -> Tuple[int, int, int, 
     return years, months, days, hours, minutes, seconds, ms
 
 
+def weeks_days_until_next_bday(dob: DOB, now: dt.datetime) -> Tuple[int, int, int, dt.datetime]:
+    # Build next birthday datetime using birth time; handle Feb 29 gracefully
+    year = now.year
+    def mk_dt(y: int) -> dt.datetime:
+        try:
+            return dt.datetime(y, dob.month, dob.day, dob.hour, dob.minute, dob.second, dob.millisecond * 1000)
+        except ValueError:
+            # Handle Feb 29 on non-leap years by using Feb 28
+            if dob.month == 2 and dob.day == 29:
+                return dt.datetime(y, 2, 28, dob.hour, dob.minute, dob.second, dob.millisecond * 1000)
+            raise
+    nxt = mk_dt(year)
+    if nxt <= now:
+        nxt = mk_dt(year + 1)
+    delta = nxt - now
+    import math
+    total_days = math.ceil(delta.total_seconds() / 86400)
+    weeks = total_days // 7
+    days = total_days % 7
+    return weeks, days, total_days, nxt
+
+
 def draw_screen(stdscr, dob_dt: dt.datetime):
     curses.curs_set(0)
     stdscr.nodelay(True)
@@ -511,9 +533,28 @@ def _run_app(stdscr):
 def main():
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--version", action="store_true", help="Print version and exit")
+    parser.add_argument("--to-bday", action="store_true", help="Print weeks and days until next birthday and exit")
     args, _ = parser.parse_known_args()
     if args.version:
         print(f"AgeTicker v{VERSION}")
+        return
+
+    if args.to_bday:
+        pre = load_last_dob(LAST_FILE)
+        if not pre:
+            # Prompt once to capture DOB, then persist
+            def _capture(stdscr):
+                dob = prompt_input(None, stdscr)
+                save_last_dob(LAST_FILE, dob)
+            curses.wrapper(_capture)
+            pre = load_last_dob(LAST_FILE)
+        if pre:
+            now = dt.datetime.now()
+            w, d, total_days, nxt = weeks_days_until_next_bday(pre, now)
+            date_str = nxt.strftime("%Y-%m-%d")
+            print(f"{w} week(s) and {d} day(s) until your next birthday ({date_str}).")
+        else:
+            print("Could not determine date of birth.")
         return
 
     # Use curses for masked input and ticker, but on exit we will print a final snapshot

@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 lastdob.txt
 
+# Build artifacts
+build/
+dist/
+*.spec~
+

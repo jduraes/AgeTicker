@@ -1,0 +1,2 @@
+# Build dependencies for creating executables
+pyinstaller>=5.0
