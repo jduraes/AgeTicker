@@ -7,6 +7,12 @@ set -e
 
 echo "=== AgeTicker Build Script ==="
 
+# Install platform-specific dependencies
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    echo "Windows detected - installing windows-curses..."
+    pip3 install windows-curses
+fi
+
 # Check if PyInstaller is installed
 PYINSTALLER_CMD="pyinstaller"
 if ! command -v pyinstaller &> /dev/null; then
