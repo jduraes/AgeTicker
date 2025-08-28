@@ -36,8 +36,32 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-build.txt
     
+    - name: Install UPX (Ubuntu/Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get update && sudo apt-get install -y upx
+    
+    - name: Install UPX (macOS)
+      if: matrix.os == 'macos-latest'
+      run: brew install upx
+    
+    - name: Install UPX (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip" -OutFile "upx.zip"
+        Expand-Archive -Path "upx.zip" -DestinationPath "upx"
+        echo "$env:GITHUB_WORKSPACE\upx\upx-4.2.4-win64" >> $env:GITHUB_PATH
+    
     - name: Build with PyInstaller
       run: pyinstaller ageticker.spec
+    
+    - name: Compress with UPX
+      shell: bash
+      run: |
+        if [ -f "dist/${{ matrix.artifact_name }}" ]; then
+          echo "Original size: $(ls -la dist/${{ matrix.artifact_name }} | awk '{print $5}') bytes"
+          upx --best --lzma --force "dist/${{ matrix.artifact_name }}" || echo "UPX compression failed or minimal benefit"
+          echo "Compressed size: $(ls -la dist/${{ matrix.artifact_name }} | awk '{print $5}') bytes"
+        fi
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
