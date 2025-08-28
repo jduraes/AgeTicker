@@ -102,7 +102,7 @@ jobs:
         
         # Set OS-specific naming and packaging
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Windows: .zip package
+          # Windows: .zip package (use PowerShell for Windows)
           PACKAGE_NAME="AgeTicker-v${VERSION}-windows-x64.zip"
           cp "dist/AgeTicker.exe" "AgeTicker.exe"
           echo "" >> README.txt
@@ -110,7 +110,8 @@ jobs:
           echo "1. Extract AgeTicker.exe from this zip file" >> README.txt
           echo "2. Double-click AgeTicker.exe to run" >> README.txt
           echo "3. Or run from Command Prompt: AgeTicker.exe" >> README.txt
-          zip "release/${PACKAGE_NAME}" "AgeTicker.exe" "README.txt"
+          # Use PowerShell Compress-Archive on Windows
+          powershell -Command "Compress-Archive -Path 'AgeTicker.exe','README.txt' -DestinationPath 'release/${PACKAGE_NAME}' -Force"
           echo "Created Windows package: ${PACKAGE_NAME}"
         elif [ "${{ matrix.os }}" = "macos-latest" ]; then
           # macOS: .tar.gz package
