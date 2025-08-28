@@ -8,6 +8,10 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   build:
     strategy:
@@ -85,8 +89,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          artifacts/AgeTicker-linux/AgeTicker-linux
-          artifacts/AgeTicker.exe/AgeTicker.exe
-          artifacts/AgeTicker/AgeTicker
+          artifacts/AgeTicker-linux/*
+          artifacts/AgeTicker.exe/*
+          artifacts/AgeTicker/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
