@@ -1,4 +1,4 @@
-name: release
+name: Release Build
 
 on:
   push:
@@ -10,70 +10,174 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
+    name: Build Release (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-14, macos-14-arm64, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          if [ "${{ runner.os }}" = "Windows" ]; then pip install windows-curses; fi
-        shell: bash
-
-      - name: Build binary
-        run: |
-          pyinstaller --onefile main.py --name ageticker
-        shell: bash
-
-      - name: Prepare artifact
-        run: |
-          mkdir -p upload
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            mv dist/ageticker.exe upload/ageticker-windows-amd64.exe
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            ARCH=$(uname -m)
-            if [ "$ARCH" = "arm64" ]; then
-              mv dist/ageticker upload/ageticker-macos-arm64
-            else
-              mv dist/ageticker upload/ageticker-macos-amd64
-            fi
-          else
-            mv dist/ageticker upload/ageticker-linux-amd64
-          fi
-        shell: bash
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ageticker-${{ runner.os }}
-          path: upload/*
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-build.txt
+    
+    - name: Install Windows-specific dependencies
+      if: matrix.os == 'windows-latest'
+      run: pip install windows-curses
+    
+    - name: Install UPX compression tool
+      shell: bash
+      run: |
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          sudo apt-get update && sudo apt-get install -y upx
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          brew install upx
+        elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+          curl -L "https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip" -o upx.zip
+          unzip upx.zip
+          echo "$GITHUB_WORKSPACE/upx-4.2.4-win64" >> $GITHUB_PATH
+        fi
+    
+    - name: Get version from tag
+      id: version
+      shell: bash
+      run: |
+        VERSION=${{ github.ref_name }}
+        VERSION=${VERSION#v}  # Remove 'v' prefix if present
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+    
+    - name: Build with PyInstaller
+      run: pyinstaller ageticker.spec
+    
+    - name: Compress executables with UPX
+      shell: bash
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          EXECUTABLE="dist/AgeTicker.exe"
+        else
+          EXECUTABLE="dist/AgeTicker"
+        fi
+        
+        if [ -f "$EXECUTABLE" ]; then
+          echo "Original size: $(ls -la "$EXECUTABLE" | awk '{print $5}') bytes"
+          upx --best --lzma --force "$EXECUTABLE" || echo "UPX compression failed - continuing without compression"
+          echo "Final size: $(ls -la "$EXECUTABLE" | awk '{print $5}') bytes"
+        fi
+    
+    - name: Create release package
+      shell: bash
+      run: |
+        mkdir -p release
+        VERSION="${{ steps.version.outputs.version }}"
+        
+        # Create installation README
+        cat > README.txt << 'EOF'
+        AgeTicker - ASCII Age Ticker
+        ============================
+        
+        A terminal application that displays your age in real-time with ASCII big digits.
+        
+        Usage:
+        - Run the executable to start
+        - Enter your date of birth when prompted
+        - Enter your time of birth (optional, press Enter to skip)
+        - Watch your age tick by in real-time!
+        - Press ESC to exit
+        
+        Features:
+        - Real-time age display (years, months, days, hours, minutes, seconds)
+        - ASCII big digit display for better visibility
+        - Saves your birth info for next time
+        - Cross-platform terminal application
+        - Lightweight standalone executable
+        
+        Project: https://github.com/jduraes/AgeTicker
+        EOF
+        
+        # Package based on OS
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          PACKAGE_NAME="AgeTicker-v${VERSION}-windows-x64.zip"
+          cp "dist/AgeTicker.exe" "AgeTicker.exe"
+          echo "" >> README.txt
+          echo "Windows Installation:" >> README.txt
+          echo "1. Extract AgeTicker.exe from this zip" >> README.txt
+          echo "2. Double-click AgeTicker.exe to run" >> README.txt
+          echo "3. Or run from Command Prompt: AgeTicker.exe" >> README.txt
+          echo "4. No installation required - it's a standalone executable" >> README.txt
+          
+          # Create zip using PowerShell on Windows
+          powershell -Command "Compress-Archive -Path 'AgeTicker.exe','README.txt' -DestinationPath 'release/${PACKAGE_NAME}' -Force"
+          
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          PACKAGE_NAME="AgeTicker-v${VERSION}-macos-universal.tar.gz"
+          cp "dist/AgeTicker" "AgeTicker"
+          chmod +x "AgeTicker"
+          echo "" >> README.txt
+          echo "macOS Installation:" >> README.txt
+          echo "1. Extract: tar -xzf ${PACKAGE_NAME}" >> README.txt
+          echo "2. Run: ./AgeTicker" >> README.txt
+          echo "3. Optional: sudo cp AgeTicker /usr/local/bin/" >> README.txt
+          echo "4. Note: First run may require 'Allow' in Security & Privacy" >> README.txt
+          
+          tar -czf "release/${PACKAGE_NAME}" "AgeTicker" "README.txt"
+          
+        elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          PACKAGE_NAME="AgeTicker-v${VERSION}-linux-x64.tar.gz"
+          cp "dist/AgeTicker" "AgeTicker"
+          chmod +x "AgeTicker"
+          echo "" >> README.txt
+          echo "Linux Installation:" >> README.txt
+          echo "1. Extract: tar -xzf ${PACKAGE_NAME}" >> README.txt
+          echo "2. Run: ./AgeTicker" >> README.txt
+          echo "3. Optional: sudo cp AgeTicker /usr/local/bin/" >> README.txt
+          echo "4. Ensure terminal supports Unicode for best display" >> README.txt
+          
+          tar -czf "release/${PACKAGE_NAME}" "AgeTicker" "README.txt"
+        fi
+        
+        echo "Created package: release/${PACKAGE_NAME}"
+        ls -la release/
+    
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.os }}
+        path: release/*
+        retention-days: 30
 
   release:
-    name: Create Release
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release
-
-      - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/**/*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Download all release artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Display artifact structure
+      run: |
+        echo "Artifact structure:"
+        find artifacts -type f -ls
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: artifacts/release-*/*
+        generate_release_notes: true
+        draft: false
+        prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
