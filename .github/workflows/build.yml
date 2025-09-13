@@ -1,39 +1,32 @@
-name: Build Executables
+name: CI Build
 
 on:
   push:
     branches: [ master ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ master ]
   workflow_dispatch:
 
 permissions:
-  contents: write
-  packages: read
+  contents: read
 
 jobs:
-  build:
+  test:
+    name: Test Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            artifact_name: AgeTicker-linux
-          - os: windows-latest
-            artifact_name: AgeTicker.exe
-          - os: macos-latest
-            artifact_name: AgeTicker
-    
-    runs-on: ${{ matrix.os }}
+        python-version: ['3.11']
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: ${{ matrix.python-version }}
     
     - name: Install dependencies
       run: |
@@ -44,137 +37,28 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: pip install windows-curses
     
-    - name: Install UPX (Ubuntu/Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get update && sudo apt-get install -y upx
+    - name: Verify main.py exists and is valid Python
+      run: python -m py_compile main.py
     
-    - name: Install UPX (macOS)
-      if: matrix.os == 'macos-latest'
-      run: brew install upx
-    
-    - name: Install UPX (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Test build with PyInstaller
       run: |
-        Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip" -OutFile "upx.zip"
-        Expand-Archive -Path "upx.zip" -DestinationPath "upx"
-        echo "$env:GITHUB_WORKSPACE\upx\upx-4.2.4-win64" >> $env:GITHUB_PATH
+        pyinstaller ageticker.spec
+        echo "✅ Build completed successfully on ${{ matrix.os }}"
     
-    - name: Build with PyInstaller
-      run: pyinstaller ageticker.spec
-    
-    - name: Compress with UPX
+    - name: Test executable basic functionality
       shell: bash
       run: |
-        if [ -f "dist/${{ matrix.artifact_name }}" ]; then
-          echo "Original size: $(ls -la dist/${{ matrix.artifact_name }} | awk '{print $5}') bytes"
-          upx --best --lzma --force "dist/${{ matrix.artifact_name }}" || echo "UPX compression failed or minimal benefit"
-          echo "Compressed size: $(ls -la dist/${{ matrix.artifact_name }} | awk '{print $5}') bytes"
-        fi
-    
-    - name: Package for distribution
-      shell: bash
-      run: |
-        # Create release directory
-        mkdir -p release
-        
-        # Get version from tag (remove 'v' prefix if present)
-        VERSION=${GITHUB_REF#refs/tags/}
-        VERSION=${VERSION#v}
-        
-        # Create README for package
-        cat > README.txt << 'EOF'
-        AgeTicker - ASCII Age Ticker
-        ============================
-        
-        A terminal application that displays your age in real-time with ASCII big digits.
-        
-        Usage:
-        - Run the executable to start
-        - Enter your date of birth when prompted
-        - Enter your time of birth (optional)
-        - Watch your age tick by in real-time!
-        - Press ESC to exit
-        
-        Features:
-        - Real-time age display in years, months, days, hours, minutes, seconds
-        - ASCII big digit display
-        - Saves your birth info for next time
-        - Cross-platform terminal application
-        
-        More info: https://github.com/jduraes/AgeTicker
-        EOF
-        
-        # Set OS-specific naming and packaging
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Windows: .zip package (use PowerShell for Windows)
-          PACKAGE_NAME="AgeTicker-v${VERSION}-windows-x64.zip"
-          cp "dist/AgeTicker.exe" "AgeTicker.exe"
-          echo "" >> README.txt
-          echo "Windows Installation:" >> README.txt
-          echo "1. Extract AgeTicker.exe from this zip file" >> README.txt
-          echo "2. Double-click AgeTicker.exe to run" >> README.txt
-          echo "3. Or run from Command Prompt: AgeTicker.exe" >> README.txt
-          # Use PowerShell Compress-Archive on Windows
-          powershell -Command "Compress-Archive -Path 'AgeTicker.exe','README.txt' -DestinationPath 'release/${PACKAGE_NAME}' -Force"
-          echo "Created Windows package: ${PACKAGE_NAME}"
-        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-          # macOS: .tar.gz package
-          PACKAGE_NAME="AgeTicker-v${VERSION}-macos-universal.tar.gz"
-          cp "dist/AgeTicker" "AgeTicker"
-          chmod +x "AgeTicker"
-          echo "" >> README.txt
-          echo "macOS Installation:" >> README.txt
-          echo "1. Extract: tar -xzf ${PACKAGE_NAME}" >> README.txt
-          echo "2. Run: ./AgeTicker" >> README.txt
-          echo "3. Or make globally available: sudo cp AgeTicker /usr/local/bin/" >> README.txt
-          tar -czf "release/${PACKAGE_NAME}" "AgeTicker" "README.txt"
-          echo "Created macOS package: ${PACKAGE_NAME}"
-        elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          # Linux: .tar.gz package
-          PACKAGE_NAME="AgeTicker-v${VERSION}-linux-x64.tar.gz"
-          cp "dist/AgeTicker" "AgeTicker" 2>/dev/null || cp "dist/AgeTicker-linux" "AgeTicker" 2>/dev/null || echo "No Linux executable found"
-          if [ -f "AgeTicker" ]; then
-            chmod +x "AgeTicker"
-            echo "" >> README.txt
-            echo "Linux Installation:" >> README.txt
-            echo "1. Extract: tar -xzf ${PACKAGE_NAME}" >> README.txt
-            echo "2. Run: ./AgeTicker" >> README.txt
-            echo "3. Or install globally: sudo cp AgeTicker /usr/local/bin/" >> README.txt
-            echo "4. Make sure your terminal supports Unicode for best display" >> README.txt
-            tar -czf "release/${PACKAGE_NAME}" "AgeTicker" "README.txt"
-            echo "Created Linux package: ${PACKAGE_NAME}"
-          else
-            echo "Warning: No Linux executable to package"
-          fi
+          # Test Windows executable
+          ./dist/AgeTicker.exe --help
+          echo "✅ Windows executable working"
+        else
+          # Test Unix executable
+          ./dist/AgeTicker --help
+          echo "✅ Unix executable working"
         fi
-        
-        # List created packages
-        ls -la release/
     
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: release/
-        retention-days: 7
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-    
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          artifacts/AgeTicker-linux/*
-          artifacts/AgeTicker.exe/*
-          artifacts/AgeTicker/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Clean build artifacts
+      run: |
+        rm -rf build dist *.spec~
+        echo "🧹 Cleaned up build artifacts"
