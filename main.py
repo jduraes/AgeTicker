@@ -168,7 +168,7 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
         # ignore other keys
 
 
-def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
+def prompt_input(pre: Optional[DOB], stdscr) -> Optional[DOB]:
     # Build defaults
     default_date = f"{pre.day:02d}/{pre.month:02d}/{pre.year:04d}" if pre else None
     default_time = f"{pre.hour:02d}:{pre.minute:02d}:{pre.second:02d}" if pre else None
@@ -177,18 +177,15 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
     stdscr.erase()
     stdscr.addstr(0, 2, f"AgeTicker v{VERSION}")
     stdscr.addstr(1, 2, "")
-    stdscr.addstr(2, 2, "Enter details. Press Enter to accept. ESC to abort.")
+    stdscr.addstr(2, 2, "Enter details. Press Enter to accept. ESC to quit.")
     stdscr.refresh()
 
     # Date input
     while True:
         date_text = _masked_edit(stdscr, 4, 2, DATE_PROMPT, "dd/mm/yyyy", default_date)
         if date_text is None:
-            # user pressed enter with incomplete -> if default exists use it, else re-ask
-            if default_date:
-                date_text = default_date
-            else:
-                continue
+            # ESC was pressed - return None to indicate user wants to quit
+            return None
         m = DATE_RE.match(date_text)
         if not m:
             # show brief error and retry
@@ -214,12 +211,8 @@ def prompt_input(pre: Optional[DOB], stdscr) -> DOB:
     while True:
         time_text = _masked_edit(stdscr, 7, 2, TIME_PROMPT, "hh:mm:ss", default_time)
         if time_text is None:
-            if default_time:
-                time_text = default_time
-            else:
-                # Noon default if skipped
-                hour, minute, second, ms = 12, 0, 0, 0
-                return DOB(day, month, year, hour, minute, second, ms)
+            # ESC was pressed - return None to indicate user wants to quit
+            return None
         tm = TIME_RE.match(time_text)
         if not tm:
             stdscr.addstr(8, 2, "Invalid time. Use hh:mm:ss.")
@@ -525,6 +518,9 @@ def draw_screen(stdscr, dob_dt: dt.datetime):
 def _run_app(stdscr):
     pre = load_last_dob(LAST_FILE)
     dob = prompt_input(pre, stdscr)
+    if dob is None:
+        # User pressed ESC to quit
+        return
     save_last_dob(LAST_FILE, dob)
     dob_dt = dob.to_datetime()
     draw_screen(stdscr, dob_dt)
@@ -545,7 +541,8 @@ def main():
             # Prompt once to capture DOB, then persist
             def _capture(stdscr):
                 dob = prompt_input(None, stdscr)
-                save_last_dob(LAST_FILE, dob)
+                if dob is not None:
+                    save_last_dob(LAST_FILE, dob)
             curses.wrapper(_capture)
             pre = load_last_dob(LAST_FILE)
         if pre:
