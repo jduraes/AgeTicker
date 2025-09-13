@@ -519,11 +519,13 @@ def _run_app(stdscr):
     pre = load_last_dob(LAST_FILE)
     dob = prompt_input(pre, stdscr)
     if dob is None:
-        # User pressed ESC to quit
-        return
+        # User pressed ESC to quit during input - no ticker was shown
+        return False
     save_last_dob(LAST_FILE, dob)
     dob_dt = dob.to_datetime()
     draw_screen(stdscr, dob_dt)
+    # If we reach here, user has used the ticker and then quit
+    return True
 
 
 def main():
@@ -554,12 +556,19 @@ def main():
             print("Could not determine date of birth.")
         return
 
-    # Use curses for masked input and ticker, but on exit we will print a final snapshot
-    last_lines_holder: List[str] = []
+    # Use curses for masked input and ticker
+    ticker_was_used = False
     try:
-        curses.wrapper(_run_app)
-    finally:
-        # After curses ends, we cannot easily retrieve drawn content; instead, recompute one last snapshot and print
+        # Capture the wrapper's function result
+        def _wrapper_run_app(stdscr):
+            return _run_app(stdscr)
+        
+        ticker_was_used = curses.wrapper(_wrapper_run_app) or False
+    except Exception:
+        ticker_was_used = False
+    
+    # Only show final snapshot if user actually used the ticker
+    if ticker_was_used:
         pre = load_last_dob(LAST_FILE)
         if pre:
             dob_dt = pre.to_datetime()
