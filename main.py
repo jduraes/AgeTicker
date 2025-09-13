@@ -163,8 +163,8 @@ def _masked_edit(stdscr, y: int, x: int, label: str, mask: str, default_text: Op
         elif k == curses.KEY_RIGHT:
             if cur < len(digit_positions):
                 cur += 1
-        elif isinstance(k, str) and k.lower() == '\x1b':  # ESC cancels
-            return default_text if default_text else None
+        elif isinstance(k, str) and k == '\x1b':  # ESC quits
+            return None
         # ignore other keys
 
 
