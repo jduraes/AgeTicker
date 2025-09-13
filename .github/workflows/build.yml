@@ -59,6 +59,7 @@ jobs:
         fi
     
     - name: Clean build artifacts
+      shell: bash
       run: |
-        rm -rf build dist *.spec~
+        rm -rf build dist *.spec~ || true
         echo "🧹 Cleaned up build artifacts"
