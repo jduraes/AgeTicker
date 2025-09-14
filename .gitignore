@@ -7,3 +7,6 @@ build/
 dist/
 *.spec~
 
+# Developer scripts
+scripts/bump-version.sh
+
